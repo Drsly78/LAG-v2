@@ -1488,19 +1488,21 @@ function payOrder(id){
 function cancelOrder(id){
   const order = state.orders.find(o => o.id === id);
   if(!order) return;
-  // Restore stock
   for(const item of order.items){
     const needed = countNeeded(getItemIngredients(item));
     for(const [k, qty] of Object.entries(needed)){
       if(state.ingredients[k]) state.ingredients[k].qty += qty;
     }
   }
-  // If was paid, remove from revenue; undo loyalty count
   if(order.status === "paye") state.dailyRevenue = Math.max(0, state.dailyRevenue - order.total);
   state.loyaltyCount = Math.max(0, state.loyaltyCount - (order.loyaltyCount || (order.loyalty ? 1 : 0)));
   order.status = "annule";
   saveState();
   syncOrderToSheets(order);
+  // Forcer le rendu immédiat sans changer d'onglet
+  state.tab = "encours";
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("tab-encours").classList.add("active");
   render();
 }
 function deleteOrder(id){
@@ -2074,6 +2076,41 @@ const VIP_ORDERS = [
 
       const pairing = { [key1]: keyF1, [key2]: keyF2, [key3]: null };
       return { items, pairing };
+    }
+  },
+  {
+    id: "pouletMyko",
+    name: "Poulet Myko Boy",
+    emoji: "🐔",
+    description: "1× Myko sans frites · 1× Poulet sans frites",
+    build: () => {
+      const myko   = BURGERS.find(b => b.id === "myko");
+      const poulet = BURGERS.find(b => b.id === "poulet");
+      const key1 = Date.now();
+      const key2 = key1 + 1;
+      const items = [
+        { type:"burger", key:key1, burger:myko,   supplements:[], removals:[], cuisson:null },
+        { type:"burger", key:key2, burger:poulet, supplements:[], removals:[], cuisson:null },
+      ];
+      return { items, pairing: { [key1]: null, [key2]: null } };
+    }
+  },
+  {
+    id: "starCity",
+    name: "StarCity Boy",
+    emoji: "🌟",
+    description: "1× Poulet + bacon · 1× Frites nature",
+    build: () => {
+      const poulet   = BURGERS.find(b => b.id === "poulet");
+      const bacon    = SUPPLEMENTS.find(s => s.id === "bacon");
+      const bfNature = BURGER_FRIES.find(f => f.id === "bfNature");
+      const key1 = Date.now();
+      const keyF1 = key1 + 10;
+      const items = [
+        { type:"burger",     key:key1,  burger:poulet, supplements:[bacon], removals:[], cuisson:null },
+        { type:"fries-menu", key:keyF1, fries:bfNature },
+      ];
+      return { items, pairing: { [key1]: keyF1 } };
     }
   }
 ];
