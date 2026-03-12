@@ -693,6 +693,7 @@ let state = {
   pendingRemovals:[],
   showCustomization:false,
   friteMenuPairing:{}, // burgerKey → friteKey
+  _editingFriteForBurgerKey: null,
   dropTargetBurgerKey:null,
   friteStepIndex:0
 };
@@ -709,7 +710,6 @@ const STORAGE_KEYS = {
 // ---- GOOGLE SHEETS SYNC ----
 function getSheetsUrl(){ return localStorage.getItem(STORAGE_KEYS.sheetsUrl) || ''; }
 function setSheetsUrl(url){ localStorage.setItem(STORAGE_KEYS.sheetsUrl, url.trim()); }
-
 
 function buildOrderItemsLabel(order){
   return (order.items || []).map(i => {
@@ -980,8 +980,10 @@ function addDrink(id){
   render();
 }
 function removeItem(key){
+  // Si c'est un burger, supprimer aussi sa frite pairée
+  const pairedFriteKey = state.friteMenuPairing[key];
+  if(pairedFriteKey) state.currentItems = state.currentItems.filter(i => i.key !== pairedFriteKey);
   state.currentItems = state.currentItems.filter(i => i.key !== key);
-  // Nettoyer le pairing si burger ou frite supprimé
   delete state.friteMenuPairing[key];
   Object.keys(state.friteMenuPairing).forEach(bk => {
     if(state.friteMenuPairing[bk] === key) state.friteMenuPairing[bk] = null;
@@ -1028,7 +1030,9 @@ function confirmOrder(slot){
     }
   }
   state.orders.push(order);
-  if(!state._editingOrderId) state.orderNum++;
+  if(!state._editingOrderId){
+    state.orderNum = state.orderNum >= 100 ? 1 : state.orderNum + 1;
+  }
   state._editingOrderId = null;
   state.loyaltyActive = false;
   state.currentItems = [];
@@ -1353,8 +1357,6 @@ function renderBoissonStep(){
   });
 
   const pairedFriteKeys = new Set(Object.values(state.friteMenuPairing).filter(Boolean));
-  const fritesNonPairees = fritesMenu.filter(f => !pairedFriteKeys.has(f.key));
-  const hasDnd = fritesMenu.length > 0 && burgers.length > 1;
 
   const editingLabel = state._editingOrderId
     ? `<span style="color:var(--gold);font-size:12px;margin-left:6px">✏️ Commande #${state._editingOrderId}</span>`
@@ -1364,7 +1366,6 @@ function renderBoissonStep(){
     <button onclick="state.step='burger';render()" style="border:none;cursor:pointer;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:bold;background:#fff0d8;color:var(--gold);border:1px solid #ecc791;white-space:nowrap">+ Burger</button>
   </div>`;
 
-  // Menus
   for(const b of burgers){
     const pairedFriteKey = state.friteMenuPairing[b.key];
     const pairedFrite = pairedFriteKey ? fritesMenu.find(f => f.key === pairedFriteKey) : null;
@@ -1376,12 +1377,9 @@ function renderBoissonStep(){
     const removalsDetail = (b.removals||[]).map(r =>
       `<div class="ticket-item-sub" style="padding-left:8px;color:var(--red)">✕ Sans ${r}</div>`
     ).join('');
+    const isEditingFrite = state._editingFriteForBurgerKey === b.key;
 
-    html += `<div class="menu-drop-zone" data-burger-key="${b.key}"
-      ondragover="onBurgerDragOver(event,${b.key})"
-      ondragleave="onBurgerDragLeave(event)"
-      ondrop="onBurgerDrop(event,${b.key})"
-      style="margin-bottom:10px;padding:10px;border:1px solid var(--line)">
+    html += `<div style="margin-bottom:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:${pairedFrite?'#fffdf7':'#fff'}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <div style="font-weight:bold;color:var(--gold);font-size:12px">${pairedFrite ? '🍽️ MENU' : '🍔 BURGER'}</div>
         <div class="ticket-item-price">${fmt(menuTotal)}</div>
@@ -1391,42 +1389,48 @@ function renderBoissonStep(){
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <div class="ticket-item-name">🍔 ${b.burger.name}${b.cuisson ? ` <span style="font-size:11px">[${cuissonLabel(b.cuisson)}]</span>` : ''}</div>
             <button onclick="editItem(${b.key})" style="border:none;cursor:pointer;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:bold;background:#fff0d8;color:var(--gold);border:1px solid #ecc791;white-space:nowrap;flex-shrink:0">✏️ Modifier</button>
+            <button onclick="removeItem(${b.key})" class="remove-btn" style="flex-shrink:0">×</button>
           </div>
           ${suppsDetail}${removalsDetail}
         </div>
         <div class="ticket-item-price" style="font-size:12px;color:var(--text-soft);flex-shrink:0">${fmt(burgerPrice)}</div>
-      </div>
-      ${pairedFrite ? `
-      <div class="draggable-frite" draggable="true"
-        ondragstart="onFriteDragStart(event,${pairedFrite.key})"
-        ondragend="onFriteDragEnd(event)"
-        ontouchstart="onFriteTouchStart(event,${pairedFrite.key})"
-        style="margin-top:4px">
-        <span style="font-size:13px">🍟 ${pairedFrite.fries.name} <span style="font-size:10px;color:var(--gold)">(menu)</span></span>
-        <div style="display:flex;align-items:center;gap:8px">
+      </div>`;
+
+    // Ligne frite pairée avec bouton Modifier
+    if(pairedFrite){
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding:6px 8px;background:#fff0d8;border-radius:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+          <span style="font-size:13px">🍟 ${pairedFrite.fries.name}</span>
+          <button onclick="state._editingFriteForBurgerKey=(state._editingFriteForBurgerKey===${b.key}?null:${b.key});render()" style="border:1px solid #ecc791;cursor:pointer;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:bold;background:white;color:var(--gold);white-space:nowrap">✏️ Changer</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
           <span class="ticket-item-price" style="font-size:12px">${fmt(pairedFrite.fries.price)}</span>
           <button class="remove-btn" onclick="removeItem(${pairedFrite.key})" style="font-size:14px">×</button>
         </div>
-      </div>` : `<div style="border:1px dashed var(--line);border-radius:8px;padding:6px;text-align:center;font-size:11px;color:var(--text-soft)">Glisser une 🍟 ici</div>`}
-    </div>`;
-  }
-
-  // Frites menu non pairées (draggables)
-  if(fritesNonPairees.length > 0){
-    html += `<div style="margin-bottom:8px"><div class="section-title" style="font-size:11px;margin-bottom:6px">Frites sans menu assigné</div>`;
-    for(const f of fritesNonPairees){
-      html += `<div class="draggable-frite" draggable="true"
-        ondragstart="onFriteDragStart(event,${f.key})"
-        ondragend="onFriteDragEnd(event)"
-        ontouchstart="onFriteTouchStart(event,${f.key})"
-        style="margin-bottom:6px">
-        <span>🍟 ${f.fries.name} <span style="font-size:10px;color:var(--gold)">(menu)</span></span>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span class="ticket-item-price" style="font-size:12px">${fmt(f.fries.price)}</span>
-          <button class="remove-btn" onclick="removeItem(${f.key})">×</button>
-        </div>
+      </div>`;
+    } else {
+      html += `<div style="border:1px dashed var(--line);border-radius:8px;padding:6px;display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+        <span style="font-size:11px;color:var(--text-soft)">Pas de frites pour ce burger</span>
+        <button onclick="state._editingFriteForBurgerKey=(state._editingFriteForBurgerKey===${b.key}?null:${b.key});render()" style="border:1px solid #ecc791;cursor:pointer;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:bold;background:#fff0d8;color:var(--gold);white-space:nowrap">+ Ajouter frites</button>
       </div>`;
     }
+
+    // Sélecteur de frites inline si en cours d'édition
+    if(isEditingFrite){
+      html += `<div style="margin-top:8px;padding:8px;background:#f9f9f9;border-radius:8px;border:1px solid var(--line)">
+        <div style="font-size:11px;color:var(--text-soft);margin-bottom:6px;font-weight:bold">Choisir les frites :</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <button onclick="changeFriteForBurger(${b.key},null)" style="border:1px solid var(--line);border-radius:8px;padding:7px 8px;background:white;cursor:pointer;font-size:11px;color:var(--red);font-weight:bold">✕ Sans frites</button>`;
+      for(const f of BURGER_FRIES){
+        const isSelected = pairedFrite && pairedFrite.fries.id === f.id;
+        html += `<button onclick="changeFriteForBurger(${b.key},'${f.id}')" style="border:1px solid ${isSelected?'var(--gold)':'var(--line)'};border-radius:8px;padding:7px 8px;background:${isSelected?'#fff0d8':'white'};cursor:pointer;font-size:11px;color:${isSelected?'var(--gold)':'var(--text)'};text-align:left">
+          <div style="font-weight:bold">${f.name}</div>
+          <div style="font-size:10px;color:var(--text-soft)">${fmt(f.price)}</div>
+        </button>`;
+      }
+      html += `</div></div>`;
+    }
+
     html += `</div>`;
   }
 
@@ -1453,6 +1457,27 @@ function renderBoissonStep(){
     <button class="btn btn-green" style="flex:1" onclick="state.step='burger';openSlotModal()">✓ Envoyer en cuisine</button>
   </div></div></div>`;
   return html;
+}
+
+function changeFriteForBurger(burgerKey, friteId){
+  burgerKey = Number(burgerKey);
+  // Supprimer l'ancienne frite pairée si elle existe
+  const oldFriteKey = state.friteMenuPairing[burgerKey];
+  if(oldFriteKey){
+    state.currentItems = state.currentItems.filter(i => i.key !== oldFriteKey);
+  }
+  if(friteId){
+    const frite = BURGER_FRIES.find(f => f.id === friteId);
+    if(frite){
+      const newKey = Date.now() + Math.random();
+      state.currentItems.push({ type:"fries-menu", key:newKey, fries:frite });
+      state.friteMenuPairing[burgerKey] = newKey;
+    }
+  } else {
+    state.friteMenuPairing[burgerKey] = null;
+  }
+  state._editingFriteForBurgerKey = null;
+  render();
 }
 
 function addDrinkV2(id){
@@ -1504,57 +1529,33 @@ function playCashSound(){
 
 function payOrder(id){
   const order = state.orders.find(o => o.id === id);
-
-  // sécurité anti double encaissement
-  if(!order || order.status !== "encours") return;
-
+  if(!order) return;
   order.status = "paye";
-  order.date = order.date || new Date().toLocaleDateString('fr-FR');
-  order.heure = order.heure || new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
-
   state.loyaltyCount += (order.loyaltyCount || (order.loyalty ? 1 : 0));
   state.dailyRevenue += order.total;
-
   saveState();
   syncOrderToSheets(order);
   playCashSound();
-
-  // rafraîchir immédiatement l'affichage
-  state.tab = "encours";
-  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-  const encoursBtn = document.getElementById("tab-encours");
-  if(encoursBtn) encoursBtn.classList.add("active");
-
   render();
 }
 function cancelOrder(id){
   const order = state.orders.find(o => o.id === id);
-  if(!order || order.status === "annule") return;
-
+  if(!order) return;
   for(const item of order.items){
     const needed = countNeeded(getItemIngredients(item));
     for(const [k, qty] of Object.entries(needed)){
       if(state.ingredients[k]) state.ingredients[k].qty += qty;
     }
   }
-
-  if(order.status === "paye") {
-    state.dailyRevenue = Math.max(0, state.dailyRevenue - order.total);
-  }
-
+  if(order.status === "paye") state.dailyRevenue = Math.max(0, state.dailyRevenue - order.total);
   state.loyaltyCount = Math.max(0, state.loyaltyCount - (order.loyaltyCount || (order.loyalty ? 1 : 0)));
   order.status = "annule";
-  order.date = order.date || new Date().toLocaleDateString('fr-FR');
-  order.heure = order.heure || new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
-
   saveState();
   syncOrderToSheets(order);
-
+  // Forcer le rendu immédiat sans changer d'onglet
   state.tab = "encours";
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-  const encoursBtn = document.getElementById("tab-encours");
-  if(encoursBtn) encoursBtn.classList.add("active");
-
+  document.getElementById("tab-encours").classList.add("active");
   render();
 }
 function deleteOrder(id){
@@ -1722,16 +1723,17 @@ function confirmOrderWithSlot(){
 
 // ---- CA MODAL ----
 function openCAModal(){
-  const allItems = state.orders.flatMap(o => o.items);
-  const nbBurgers  = allItems.filter(i => i.type === "burger").length;
-  // Frites = seules + steakfrites + frites dans les menus burger
-  const nbFritesSolo = allItems.filter(i => i.type === "fries" || i.type === "steakfrites").length;
-  const nbFritesMenu = allItems.filter(i => i.type === "burger" && i.frite).length;
-  const nbFrites = nbFritesSolo + nbFritesMenu;
-  // Boissons = seules + boissons dans les menus burger
-  const nbBoissonsSolo = allItems.filter(i => i.type === "drink").length;
-  const nbBoissonsMenu = allItems.filter(i => i.type === "burger" && i.drink).length;
-  const nbBoissons = nbBoissonsSolo + nbBoissonsMenu;
+  const paidOrders = state.orders.filter(o => o.status === 'paye');
+  const allPaidItems = paidOrders.flatMap(o => o.items);
+  const pairedFriteKeys = new Set(
+    paidOrders.flatMap(o => Object.values(o.friteMenuPairing || {}).filter(Boolean))
+  );
+  const nbBurgers  = allPaidItems.filter(i => i.type === "burger").length;
+  const nbFritesSolo = allPaidItems.filter(i => i.type === "fries").length;
+  const nbFritesMenu = allPaidItems.filter(i => i.type === "fries-menu" && pairedFriteKeys.has(i.key)).length;
+  const nbFritesUnpaired = allPaidItems.filter(i => i.type === "fries-menu" && !pairedFriteKeys.has(i.key)).length;
+  const nbFrites = nbFritesSolo + nbFritesMenu + nbFritesUnpaired;
+  const nbBoissons = allPaidItems.filter(i => i.type === "drink").length;
 
   let html = `<div class="ca-stats" style="grid-template-columns:1fr 1fr 1fr 1fr">
     <div class="ca-stat"><div class="ca-stat-val">${nbBurgers}</div><div class="ca-stat-label">BURGERS</div></div>
@@ -1750,16 +1752,20 @@ function openCAModal(){
         : order.status === 'annule'
           ? '<span style="font-size:10px;background:#fce0e0;color:var(--red);border-radius:6px;padding:2px 6px;margin-left:6px">✕ Annulée</span>'
           : '<span style="font-size:10px;background:#fff0d8;color:#d77a11;border-radius:6px;padding:2px 6px;margin-left:6px">⏳ En cours</span>';
+      const orderPairing = order.friteMenuPairing || {};
+      const orderPairedFriteKeys = new Set(Object.values(orderPairing).filter(Boolean));
       html += `<div class="ca-detail-row" style="flex-direction:column;align-items:stretch;gap:6px${order.status==='annule'?';opacity:.5':''}">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
             <div class="ca-detail-num">#${order.id}</div>${statusBadge}
-            ${order.loyalty ? '<span style="font-size:10px;background:#fce8e8;color:var(--red);border-radius:6px;padding:2px 6px">🎫 Fidélité</span>' : ''}
+            ${order.loyalty ? `<span style="font-size:10px;background:#fce8e8;color:var(--red);border-radius:6px;padding:2px 6px">🎫 ×${order.loyaltyCount||1}</span>` : ''}
+            ${order.slot ? `<span style="font-size:10px;background:#fff0d8;color:var(--gold);border-radius:6px;padding:2px 6px">🕐 ${order.slot}</span>` : ''}
           </div>
           <div class="ca-detail-price">${fmt(order.total)}</div>
         </div>`;
 
       for(const item of order.items){
+        if(item.type === "fries-menu" && orderPairedFriteKeys.has(item.key)) continue; // affiché sous son burger
         if(item.type === "steakfrites"){
           html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0 3px 8px;border-left:3px solid #e8c46a">
             <div class="ca-detail-item" style="margin:0">🥩 Steak + Frites</div>
@@ -1775,46 +1781,36 @@ function openCAModal(){
             <div class="ca-detail-item" style="margin:0">🥤 ${item.drink.name}</div>
             <div style="font-size:12px;color:var(--gold);font-weight:bold">${fmt(item.drink.price)}</div>
           </div>`;
-        } else {
-          // Burger — ligne principale
+        } else if(item.type === "burger"){
           const cuisson = item.cuisson ? ` (${cuissonLabel(item.cuisson)})` : '';
           const nameColor = item.cuisson ? cuissonColor(item.cuisson) : 'var(--text)';
+          const pairedFriteKey = orderPairing[item.key];
+          const pairedFrite = pairedFriteKey ? order.items.find(i => i.key === pairedFriteKey) : null;
           html += `<div style="padding:3px 0 3px 8px;border-left:3px solid ${nameColor}">
             <div style="display:flex;justify-content:space-between;align-items:center">
               <div class="ca-detail-item" style="margin:0;font-weight:bold;color:${nameColor}">🍔 ${item.burger.name}${cuisson}</div>
               <div style="font-size:12px;color:var(--gold);font-weight:bold">${fmt(item.burger.price)}</div>
             </div>`;
-          // Suppléments
           for(const s of (item.supplements||[])){
             html += `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:2px">
-              <div class="ca-detail-item" style="margin:0;padding-left:8px">+ ${s.name}</div>
+              <div class="ca-detail-item" style="margin:0;padding-left:8px;color:#2a7abf;font-weight:bold">+ ${s.name}</div>
               <div style="font-size:11px;color:var(--text-soft)">${fmt(s.price)}</div>
             </div>`;
           }
-          // Retraits
           for(const r of (item.removals||[])){
             html += `<div style="padding-top:2px;padding-left:8px">
               <div class="ca-detail-item" style="margin:0;color:var(--red)">✕ Sans ${r}</div>
             </div>`;
           }
-          // Frites avec burger
-          if(item.frite){
-            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:2px">
-              <div class="ca-detail-item" style="margin:0;padding-left:8px">🍟 Frites ${item.frite.name}</div>
-              <div style="font-size:11px;color:var(--text-soft)">${fmt(item.frite.price)}</div>
-            </div>`;
-          }
-          // Boisson avec burger
-          if(item.drink){
-            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:2px">
-              <div class="ca-detail-item" style="margin:0;padding-left:8px">🥤 ${item.drink.name}</div>
-              <div style="font-size:11px;color:var(--text-soft)">${fmt(item.drink.price)}</div>
+          if(pairedFrite){
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:2px;padding-left:8px">
+              <div class="ca-detail-item" style="margin:0;color:var(--gold)">🍟 ${pairedFrite.fries.name}</div>
+              <div style="font-size:11px;color:var(--text-soft)">${fmt(pairedFrite.fries.price)}</div>
             </div>`;
           }
           html += '</div>';
         }
       }
-      // Ligne HT + TVA par commande
       if(order.status !== 'annule'){
         const ht  = order.total / 1.10;
         const tva = order.total - ht;
@@ -1838,15 +1834,11 @@ function openCAModal(){
     </div>
     <div style="height:1px;background:rgba(0,0,0,.08)"></div>
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <div>
-        <div style="font-size:11px;font-weight:bold;letter-spacing:1.5px;color:var(--text-soft)">DONT TVA (10%)</div>
-      </div>
+      <div><div style="font-size:11px;font-weight:bold;letter-spacing:1.5px;color:var(--text-soft)">DONT TVA (10%)</div></div>
       <div style="font-size:16px;font-weight:bold;color:var(--orange);font-family:'Courier New',monospace">${fmt(state.dailyRevenue - state.dailyRevenue / 1.10)}</div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <div>
-        <div class="ca-total-label" style="color:var(--green)">CA NET HT</div>
-      </div>
+      <div><div class="ca-total-label" style="color:var(--green)">CA NET HT</div></div>
       <div class="ca-total-value" style="color:var(--green)">${fmt(state.dailyRevenue / 1.10)}</div>
     </div>
   </div>`;
@@ -1884,19 +1876,41 @@ function openAgendaModal(){
       for(const order of slotOrders){
         const pairing = order.friteMenuPairing || {};
         const burgerItems = order.items.filter(i => i.type === "burger" || i.type === "steakfrites");
-        const burgerLines = burgerItems.map(i => {
-          if(i.type === "steakfrites") return `<div style="font-size:12px;color:var(--text)">🥩 Steak + Frites</div>`;
-          const cuisson = i.cuisson ? ` <span style="color:${cuissonColor(i.cuisson)}">[${cuissonLabel(i.cuisson)}]</span>` : '';
-          const removals = (i.removals||[]).length ? ` <span style="color:var(--red)">✕${(i.removals).map(r=>r.split(' ')[0]).join(',')}</span>` : '';
-          const pairedFriteKey = pairing[i.key];
-          const pairedFrite = pairedFriteKey ? order.items.find(x => x.key === pairedFriteKey) : null;
-          const friteLabel = pairedFrite ? ` <span style="color:var(--gold);font-size:11px">🍟${pairedFrite.fries.name}</span>` : '';
-          return `<div style="font-size:12px;color:var(--text)">🍔 ${i.burger.name}${cuisson}${removals}${friteLabel}</div>`;
-        }).join('');
-        html += `<div class="agenda-order-line ${order.status}" style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-left:none;border-bottom:1px solid var(--line)">
+        const drinkItems  = order.items.filter(i => i.type === "drink");
+        const fritesSolo  = order.items.filter(i => i.type === "fries");
+
+        let detailHtml = '';
+        for(const i of burgerItems){
+          if(i.type === "steakfrites"){
+            detailHtml += `<div style="padding:5px 0 5px 8px;border-left:3px solid #e8c46a;margin-bottom:4px">
+              <div style="font-size:13px;font-weight:bold">🥩 Steak + Frites</div>
+            </div>`;
+          } else {
+            const nameColor = i.cuisson ? cuissonColor(i.cuisson) : 'var(--text)';
+            const pairedFriteKey = pairing[i.key];
+            const pairedFrite = pairedFriteKey ? order.items.find(x => x.key === pairedFriteKey) : null;
+            detailHtml += `<div style="padding:5px 0 5px 8px;border-left:3px solid ${nameColor};margin-bottom:4px">
+              <div style="font-size:13px;font-weight:bold;color:${nameColor}">🍔 ${i.burger.name}${i.cuisson ? ` <span style="font-size:11px">[${cuissonLabel(i.cuisson)}]</span>` : ''}</div>
+              ${(i.supplements||[]).map(s => `<div style="font-size:11px;color:#2a7abf;font-weight:bold;padding-left:6px">+ ${s.name}</div>`).join('')}
+              ${(i.removals||[]).map(r => `<div style="font-size:11px;color:var(--red);padding-left:6px;font-weight:bold">✕ SANS ${r.toUpperCase()}</div>`).join('')}
+              ${pairedFrite ? `<div style="font-size:11px;color:var(--gold);padding-left:6px">🍟 ${pairedFrite.fries.name}</div>` : ''}
+            </div>`;
+          }
+        }
+        for(const f of fritesSolo){
+          detailHtml += `<div style="font-size:11px;color:var(--text-soft);padding:2px 0 2px 8px;border-left:3px solid #f1d7b7;margin-bottom:4px">🍟 ${f.fries.name} <span style="font-size:10px">(seule)</span></div>`;
+        }
+        for(const d of drinkItems){
+          detailHtml += `<div style="font-size:11px;color:var(--text-soft);padding:2px 0 2px 8px;border-left:3px solid #c0d8f0;margin-bottom:4px">🥤 ${d.drink.name}</div>`;
+        }
+
+        html += `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
           <button onclick="goToOrder(${order.id})" style="flex-shrink:0;background:${order.status==='paye'?'#1a9058':'var(--gold)'};color:white;border:none;border-radius:10px;padding:7px 14px;font-size:15px;font-weight:bold;cursor:pointer;min-width:52px;text-align:center;font-family:Georgia,serif;letter-spacing:.5px">#${order.id}</button>
-          <div style="flex:1">${burgerLines || '<div style="font-size:12px;color:var(--text-soft)">—</div>'}${order.loyalty ? '<div style="font-size:11px;color:var(--red)">🎫 Fidélité</div>' : ''}</div>
-          <div style="font-size:13px;font-weight:bold;color:var(--gold);font-family:\'Courier New\',monospace;white-space:nowrap">${fmt(order.total)}</div>
+          <div style="flex:1;min-width:0">
+            ${detailHtml || '<div style="font-size:12px;color:var(--text-soft)">—</div>'}
+            ${order.loyalty ? `<div style="font-size:11px;color:var(--red);margin-top:2px">🎫 Fidélité ×${order.loyaltyCount||1}</div>` : ''}
+          </div>
+          <div style="font-size:13px;font-weight:bold;color:var(--gold);font-family:'Courier New',monospace;white-space:nowrap;padding-top:4px">${fmt(order.total)}</div>
         </div>`;
       }
       html += '</div>';
@@ -2415,7 +2429,7 @@ function renderOrderItems(order){
         <div>
           <div class="order-item-name" style="color:${nameColor}">${item.burger.name}</div>
           ${cuisson}
-          ${(item.supplements || []).map(s => `<div class="order-item-sub">+ ${s.name}</div>`).join('')}
+          ${(item.supplements || []).map(s => `<div class="order-item-sub" style="color:#2a7abf;font-weight:bold">+ ${s.name}</div>`).join('')}
           ${(item.removals || []).map(r => `<div class="order-item-sub" style="color:var(--red);font-weight:bold">✕ SANS ${r.toUpperCase()}</div>`).join('')}
           ${pairedFrite ? `<div class="order-item-sub" style="color:var(--gold)">🍟 ${pairedFrite.fries.name}</div>` : ''}
         </div>
@@ -2427,14 +2441,19 @@ function renderOrderItems(order){
 }
 
 function renderEnCours(){
-  const sortBySlot = (a, b) => {
-    if(!a.slot && !b.slot) return a.id - b.id;
-    if(!a.slot) return 1;
-    if(!b.slot) return -1;
-    return a.slot.localeCompare(b.slot) || a.id - b.id;
+  const parseTime = h => {
+    if(!h) return 9999;
+    const [hh, mm] = h.split(':').map(Number);
+    return hh * 60 + (mm || 0);
   };
-  const encours = state.orders.filter(o => o.status === "encours").sort(sortBySlot);
-  const payes   = state.orders.filter(o => o.status === "paye").sort(sortBySlot);
+  const sortByTime = (a, b) => {
+    const ta = parseTime(a.heure), tb = parseTime(b.heure);
+    if(ta !== tb) return ta - tb;
+    if(a.slot && b.slot) return a.slot.localeCompare(b.slot);
+    return a.id - b.id;
+  };
+  const encours = state.orders.filter(o => o.status === "encours").sort(sortByTime);
+  const payes   = state.orders.filter(o => o.status === "paye").sort(sortByTime);
   const annules = state.orders.filter(o => o.status === "annule");
   let html = '<div class="pad">';
 
@@ -2461,7 +2480,7 @@ function renderEnCours(){
         <button class="btn btn-cancel" onclick="cancelOrder(${order.id})">✕ Annuler</button>
         <button class="btn" style="flex:1;background:#fff0d8;color:var(--gold);border:1px solid #ecc791" onclick="editOrder(${order.id})">✏️ Modifier</button>
         <button class="btn" style="background:#fff0d8;color:var(--gold);border:1px solid #ecc791;text-align:center" onclick="addOrderLoyalty(${order.id})">🎫 Fidélité</button>
-        <button class="btn btn-pay" onclick="if(this.disabled) return; this.disabled = true; payOrder(${order.id})">💳 ${fmt(order.total)}</button>
+        <button class="btn btn-pay" onclick="payOrder(${order.id})">💳 ${fmt(order.total)}</button>
       </div></div>`;
   }
 
@@ -2579,6 +2598,22 @@ function renderStocks(){
     </div>
   </div>`;
 
+  // Numéro de départ
+  html += `<div class="stock-card" style="margin-bottom:14px">
+    <div class="section-title" style="margin-top:0">🔢 Numéro de commande</div>
+    <div style="font-size:12px;color:var(--text-soft);margin-bottom:10px">
+      Numéro de la prochaine commande (cycle 1 → 100 → 1).
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="stock-step" onclick="adjustOrderNum(-1)">−</button>
+      <input id="order-num-input" class="edit-input" type="number" min="1" max="100" value="${state.orderNum}"
+        style="width:70px;text-align:center;font-size:18px;font-weight:bold;color:var(--gold)"
+        onchange="setOrderNum(this.value)">
+      <button class="stock-step" onclick="adjustOrderNum(1)">+</button>
+      <span style="font-size:12px;color:var(--text-soft);margin-left:4px">prochain numéro</span>
+    </div>
+  </div>`;
+
   if(low > 0 || out > 0){
     html += '<div class="alert-box">';
     if(out > 0) html += `<div class="alert-out">⚠️ ${out} ingrédient${out > 1 ? 's' : ''} épuisé${out > 1 ? 's' : ''}</div>`;
@@ -2617,6 +2652,19 @@ if('serviceWorker' in navigator){
   });
 }
 
+function setOrderNum(val){
+  const n = Math.min(100, Math.max(1, parseInt(val, 10) || 1));
+  state.orderNum = n;
+  saveState();
+  const el = document.getElementById('order-num-input');
+  if(el) el.value = n;
+}
+function adjustOrderNum(delta){
+  let n = state.orderNum + delta;
+  if(n > 100) n = 1;
+  if(n < 1) n = 100;
+  setOrderNum(n);
+}
 function saveSheetsUrl(){
   const v = document.getElementById('sheets-url-input')?.value || '';
   setSheetsUrl(v);
