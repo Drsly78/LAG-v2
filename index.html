@@ -1474,17 +1474,31 @@ function playCashSound(){
   } catch(e) {}
 }
 
+
 function payOrder(id){
   const order = state.orders.find(o => o.id === id);
-  if(!order) return;
+
+  // sécurité anti double encaissement
+  if(!order || order.status !== "encours") return;
+
   order.status = "paye";
+
   state.loyaltyCount += (order.loyaltyCount || (order.loyalty ? 1 : 0));
   state.dailyRevenue += order.total;
+
   saveState();
   syncOrderToSheets(order);
   playCashSound();
+
+  // rafraîchir immédiatement l'affichage
+  state.tab = "encours";
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  const encBtn = document.getElementById("tab-encours");
+  if(encBtn) encBtn.classList.add("active");
+
   render();
 }
+
 function cancelOrder(id){
   const order = state.orders.find(o => o.id === id);
   if(!order) return;
@@ -2421,7 +2435,7 @@ function renderEnCours(){
         <button class="btn btn-cancel" onclick="cancelOrder(${order.id})">✕ Annuler</button>
         <button class="btn" style="flex:1;background:#fff0d8;color:var(--gold);border:1px solid #ecc791" onclick="editOrder(${order.id})">✏️ Modifier</button>
         <button class="btn" style="background:#fff0d8;color:var(--gold);border:1px solid #ecc791;text-align:center" onclick="addOrderLoyalty(${order.id})">🎫 Fidélité</button>
-        <button class="btn btn-pay" onclick="payOrder(${order.id})">💳 ${fmt(order.total)}</button>
+        <button class="btn btn-pay" onclick="this.disabled=true; payOrder(${order.id})">💳 ${fmt(order.total)}</button>
       </div></div>`;
   }
 
