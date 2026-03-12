@@ -502,6 +502,7 @@
     <button class="tab-btn" onclick="switchTab('encours')" id="tab-encours"><span class="tab-icon">⏳</span><span>En cours</span></button>
     <button class="tab-btn" onclick="switchTab('historique')" id="tab-historique"><span class="tab-icon">📋</span><span>Historique</span></button>
     <button class="tab-btn" onclick="switchTab('stocks')" id="tab-stocks"><span class="tab-icon">📦</span><span>Stocks</span></button>
+    <button class="tab-btn" onclick="switchTab('vip')" id="tab-vip"><span class="tab-icon">⭐</span><span>VIP</span></button>
   </div>
 
   <div class="content" id="content"></div>
@@ -566,7 +567,6 @@ const INGREDIENTS_DEFAULT = {
   chevre:     { name:"Chèvre",           qty:16,  category:"Fromages" },
   raclette:   { name:"Raclette",         qty:36,  category:"Fromages" },
   reblochon:  { name:"Reblochon",        qty:24,  category:"Fromages" },
-  truffees:   { name:"Truffées parmesan",qty:12,  category:"Fromages" },
   oeuf:       { name:"Œufs",             qty:10,  category:"Œufs" }
 };
 
@@ -576,7 +576,7 @@ const BURGERS = [
   { id:"dragon",     name:"Le Dragon",     price:11,  cat:"Burger", ing:["bun","boeuf","cheddar"] },
   { id:"montagnard", name:"Le Montagnard", price:11,  cat:"Burger", ing:["bun","boeuf","reblochon"] },
   { id:"myko",       name:"Le Myko",       price:11,  cat:"Burger", ing:["bun","boeuf","chevre"] },
-  { id:"americain",  name:"L'Américain",   price:12,  cat:"Burger", ing:["bun","boeuf","cheddar"] },
+  { id:"americain",  name:"L'Américain",   price:12,  cat:"Burger", ing:["bun","boeuf","cheddar","cheddar"] },
   { id:"poulet",     name:"Le Poulet",     price:12,  cat:"Burger", ing:["bun","poulet","cheddar"] },
   { id:"winter",     name:"Le Winter",     price:12,  cat:"Burger", ing:["bun","boeuf","raclette"] },
   { id:"cheese",     name:"Le Cheese",     price:11,  cat:"Burger", ing:["bun","boeuf","cheddar"] },
@@ -642,20 +642,20 @@ const SUPPLEMENTS = [
 
 const BURGER_FRIES = [
   { id:"bfNature",  name:"Nature",                 price:2.5, ing:[] },
-  { id:"bfTruf",    name:"Truffées",               price:4.5, ing:["truffees"] },
-  { id:"bfChed",    name:"Cheddar",                price:4.5, ing:["cheddar"] },
-  { id:"bfChedOig", name:"Cheddar oignons",        price:5,   ing:["cheddar"] },
-  { id:"bfChedBac", name:"Cheddar bacon",          price:5.5, ing:["cheddar"] },
-  { id:"bfFull",    name:"Cheddar bacon oignon",   price:6,   ing:["cheddar"] }
+  { id:"bfTruf",    name:"Truffées",               price:4.5, ing:[] },
+  { id:"bfChed",    name:"Cheddar",                price:4.5, ing:["cheddar","cheddar"] },
+  { id:"bfChedOig", name:"Cheddar oignons",        price:5,   ing:["cheddar","cheddar"] },
+  { id:"bfChedBac", name:"Cheddar bacon",          price:5.5, ing:["cheddar","cheddar"] },
+  { id:"bfFull",    name:"Cheddar bacon oignon",   price:6,   ing:["cheddar","cheddar"] }
 ];
 
 const SOLO_FRIES = [
   { id:"sfNature",  name:"Frites natures",               price:3.5, ing:[] },
-  { id:"sfTruf",    name:"Frites truffées",              price:5.5, ing:["truffees"] },
-  { id:"sfChed",    name:"Frites cheddar",               price:5.5, ing:["cheddar"] },
-  { id:"sfChedOig", name:"Frites cheddar oignons",       price:6,   ing:["cheddar"] },
-  { id:"sfChedBac", name:"Frites cheddar bacon",         price:6.5, ing:["cheddar"] },
-  { id:"sfFull",    name:"Frites cheddar bacon oignon",  price:7,   ing:["cheddar"] }
+  { id:"sfTruf",    name:"Frites truffées",              price:5.5, ing:[] },
+  { id:"sfChed",    name:"Frites cheddar",               price:5.5, ing:["cheddar","cheddar"] },
+  { id:"sfChedOig", name:"Frites cheddar oignons",       price:6,   ing:["cheddar","cheddar"] },
+  { id:"sfChedBac", name:"Frites cheddar bacon",         price:6.5, ing:["cheddar","cheddar"] },
+  { id:"sfFull",    name:"Frites cheddar bacon oignon",  price:7,   ing:["cheddar","cheddar"] }
 ];
 
 const DRINKS = [
@@ -693,7 +693,8 @@ let state = {
   pendingRemovals:[],
   showCustomization:false,
   friteMenuPairing:{}, // burgerKey → friteKey
-  dropTargetBurgerKey:null
+  dropTargetBurgerKey:null,
+  friteStepIndex:0
 };
 
 const STORAGE_KEYS = {
@@ -990,7 +991,7 @@ function confirmOrder(slot){
   const rawTotal = state.currentItems.reduce((sum, item) => sum + itemTotal(item), 0);
   const orderId = state._editingOrderId || state.orderNum;
   const _now = new Date();
-  const order = { id:orderId, items:[...state.currentItems], rawTotal, total:rawTotal, status:"encours", loyalty:false, slot: slot || null, date: _now.toLocaleDateString('fr-FR'), heure: _now.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'}) };
+  const order = { id:orderId, items:[...state.currentItems], rawTotal, total:rawTotal, status:"encours", loyalty:false, slot: slot || null, date: _now.toLocaleDateString('fr-FR'), heure: _now.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'}), friteMenuPairing:{...state.friteMenuPairing} };
 
   for(const item of state.currentItems){
     const needed = countNeeded(getItemIngredients(item));
@@ -1003,6 +1004,8 @@ function confirmOrder(slot){
   state._editingOrderId = null;
   state.loyaltyActive = false;
   state.currentItems = [];
+  state.friteMenuPairing = {};
+  state.friteStepIndex = 0;
   state.step = "burger";
   saveState();
   switchTab("caisse");
@@ -1014,19 +1017,50 @@ function confirmOrder(slot){
   requestAnimationFrame(() => requestAnimationFrame(scrollTop));
   setTimeout(scrollTop, 50);
 }
-function toggleOrderLoyalty(id){
+function addOrderLoyalty(id){
   const order = state.orders.find(o => o.id === id);
   if(!order || order.status === "paye") return;
-  order.loyalty = !order.loyalty;
+  const count = (order.loyaltyCount || 0) + 1;
+  order.loyaltyCount = count;
+  order.loyalty = count > 0;
   const raw = order.rawTotal ?? order.total;
   order.rawTotal = raw;
-  order.total = order.loyalty ? Math.max(0, raw - 10) : raw;
+  order.total = Math.max(0, raw - count * 10);
   saveState();
   render();
 }
+function removeOrderLoyalty(id){
+  const order = state.orders.find(o => o.id === id);
+  if(!order || order.status === "paye") return;
+  const count = Math.max(0, (order.loyaltyCount || 0) - 1);
+  order.loyaltyCount = count;
+  order.loyalty = count > 0;
+  const raw = order.rawTotal ?? order.total;
+  order.rawTotal = raw;
+  order.total = Math.max(0, raw - count * 10);
+  saveState();
+  render();
+}
+function toggleOrderLoyalty(id){
+  const order = state.orders.find(o => o.id === id);
+  if(!order || order.status === "paye") return;
+  if(order.loyaltyCount > 0) removeOrderLoyalty(id);
+  else addOrderLoyalty(id);
+}
 function goToFritesStep(){
   if(state.currentItems.length === 0) return;
+  state.friteStepIndex = 0;
   state.step = "frites";
+  // Pré-sélectionner Frites Nature pour chaque burger sans frite assignée
+  const burgers = state.currentItems.filter(i => i.type === 'burger');
+  const nature = BURGER_FRIES.find(x => x.id === 'bfNature');
+  burgers.forEach(b => {
+    if(!state.friteMenuPairing[b.key] && nature && optionAvailable(nature)){
+      const newItem = { type:"fries-menu", fries:nature, key:Date.now() + Math.random() };
+      state.currentItems.push(newItem);
+      state.friteMenuPairing[b.key] = newItem.key;
+    }
+  });
   render();
   const scrollTop = () => { const c = document.getElementById("content"); if(c) c.scrollTop = 0; window.scrollTo(0,0); };
   requestAnimationFrame(() => requestAnimationFrame(scrollTop));
@@ -1034,62 +1068,93 @@ function goToFritesStep(){
 }
 
 function renderFritesStep(){
+  const burgers = state.currentItems.filter(i => i.type === 'burger');
+  const idx = Math.min(state.friteStepIndex, burgers.length - 1);
+  const b = burgers[idx];
+
   let html = '<div class="pad">';
   html += `<div class="options-header">
-    <button class="btn-back" onclick="state.step='burger';render()">← Retour</button>
-    <div class="options-title">🍟 Frites</div>
+    <button class="btn-back" onclick="${idx === 0 ? "state.step='burger';render()" : `state.friteStepIndex=${idx-1};render()`}">← Retour</button>
+    <div class="options-title">🍟 Frites ${burgers.length > 1 ? `(${idx+1}/${burgers.length})` : ''}</div>
   </div>`;
 
-  // Bouton haut
-  html += `<button class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="state.step='boissons';render()">🥤 Passer aux boissons →</button>`;
+  // Bouton passer aux boissons en haut
+  html += `<button class="btn btn-primary" style="width:100%;margin-bottom:16px" onclick="state.step='boissons';render()">🥤 Passer aux boissons →</button>`;
 
-  // Frites menu
-  const nbBurgers = state.currentItems.filter(i => i.type === 'burger').length;
-  const nbFritesMenu = state.currentItems.filter(i => i.type === 'fries-menu').length;
-  const fritesMenuPlein = nbFritesMenu >= nbBurgers;
+  if(b){
+    const pairedFriteKey = state.friteMenuPairing[b.key];
+    const pairedFrite = pairedFriteKey ? state.currentItems.find(i => i.key === pairedFriteKey) : null;
+    const selectedId = pairedFrite ? pairedFrite.fries.id : null;
 
-  html += `<div class="section-title">Frites menu <span style="font-size:11px;color:var(--text-soft);font-weight:normal">(avec burger) — ${nbFritesMenu}/${nbBurgers}</span></div><div class="grid-2">`;
-  for(const f of BURGER_FRIES){
-    const avail = optionAvailable(f) && !fritesMenuPlein;
-    html += `<button class="mini-card${avail ? '' : ' unavailable'}" onclick="${avail ? `addBurgerFriesV2('${f.id}')` : ''}">
-      <div class="mini-name">${f.name}</div>
-      <div class="mini-price">${fmt(f.price)}</div>
-      ${fritesMenuPlein ? '<div class="epuise-badge">MAX</div>' : (!optionAvailable(f) ? '<div class="epuise-badge">ÉPUISÉ</div>' : '')}
+    html += `<div style="padding:12px 14px;background:var(--panel-2);border:1px solid var(--line);border-radius:14px;margin-bottom:16px">
+      <div style="font-weight:bold;font-size:15px;color:var(--text)">🍔 ${b.burger.name}</div>
+      ${b.cuisson ? `<div style="font-size:12px;color:var(--text-soft);margin-top:2px">${cuissonDot(b.cuisson)} ${cuissonLabel(b.cuisson)}</div>` : ''}
+    </div>`;
+
+    html += '<div class="section-title">Choisir les frites</div>';
+    html += '<div class="grid-2">';
+
+    // Bouton Sans frites
+    html += `<button class="mini-card${selectedId===null?' selected':''}" onclick="selectFriteForBurger(${b.key},'none')" style="${selectedId===null?'border:2px solid var(--gold);background:linear-gradient(180deg,#fff8ef,#fff0d0)':''}">
+      <div class="mini-name">Sans frites</div>
+      <div class="mini-price">0,00 €</div>
     </button>`;
-  }
-  html += '</div>';
 
-  // Frites hors menu
-  html += '<div class="section-title">Frites hors menu <span style="font-size:11px;color:var(--text-soft);font-weight:normal">(portion seule)</span></div><div class="grid-2">';
-  for(const f of SOLO_FRIES){
-    const avail = optionAvailable(f);
-    html += `<button class="mini-card${avail ? '' : ' unavailable'}" onclick="${avail ? `addSoloFriesV2('${f.id}')` : ''}">
-      <div class="mini-name">${f.name}</div>
-      <div class="mini-price">${fmt(f.price)}</div>
-      ${!avail ? '<div class="epuise-badge">ÉPUISÉ</div>' : ''}
-    </button>`;
-  }
-  html += '</div>';
+    for(const f of BURGER_FRIES){
+      const sel = selectedId === f.id;
+      const avail = optionAvailable(f);
+      html += `<button class="mini-card${sel?' selected':''}${avail?'':' unavailable'}" onclick="${avail?`selectFriteForBurger(${b.key},'${f.id}')`:''}" style="${sel?'border:2px solid var(--gold);background:linear-gradient(180deg,#fff8ef,#fff0d0)':''}">
+        <div class="mini-name">${f.name}</div>
+        <div class="mini-price">${fmt(f.price)}</div>
+        ${!avail?'<div class="epuise-badge">ÉPUISÉ</div>':''}
+      </button>`;
+    }
+    html += '</div>';
 
-  // Frites ajoutées
-  const friteItems = state.currentItems.filter(i => i.type === 'fries' || i.type === 'fries-menu');
-  if(friteItems.length > 0){
-    html += '<div class="section-title">Frites ajoutées</div>';
-    for(const item of friteItems){
-      const label = item.type === 'fries-menu' ? item.fries.name + ' <span style="font-size:10px;color:var(--gold)">(menu)</span>' : item.fries.name + ' <span style="font-size:10px;color:var(--text-soft)">(hors menu)</span>';
-      html += `<div class="ticket-item"><div><div class="ticket-item-name">🍟 ${label}</div></div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div class="ticket-item-price">${fmt(item.fries.price)}</div>
-          <button class="remove-btn" onclick="removeItem(${item.key})">×</button>
-        </div></div>`;
+    // Progression
+    if(burgers.length > 1){
+      html += `<div style="display:flex;gap:6px;margin-top:16px;justify-content:center">`;
+      for(let i=0;i<burgers.length;i++){
+        const done = state.friteMenuPairing[burgers[i].key] !== undefined;
+        html += `<div style="width:28px;height:6px;border-radius:3px;background:${i===idx?'var(--gold)':done?'var(--green)':'var(--line)'}"></div>`;
+      }
+      html += `</div>`;
     }
   }
 
-  html += `<div style="display:flex;gap:8px;margin-top:20px">
-    <button class="btn btn-back" style="flex:1" onclick="state.step='boissons';render()">Sans frites →</button>
-    <button class="btn btn-primary" style="flex:2" onclick="state.step='boissons';render()">🥤 Boissons →</button>
-  </div></div>`;
+  html += `<button class="btn btn-primary" style="width:100%;margin-top:20px" onclick="state.step='boissons';render()">🥤 Boissons →</button>`;
+  html += '</div>';
   return html;
+}
+
+function selectFriteForBurger(burgerKey, friteId){
+  burgerKey = Number(burgerKey);
+  const oldFriteKey = state.friteMenuPairing[burgerKey];
+  if(oldFriteKey){
+    state.currentItems = state.currentItems.filter(i => i.key !== oldFriteKey);
+    state.friteMenuPairing[burgerKey] = null;
+  }
+  if(friteId !== 'none'){
+    const frites = BURGER_FRIES.find(x => x.id === friteId);
+    if(frites && optionAvailable(frites)){
+      const newItem = { type:"fries-menu", fries:frites, key:Date.now() + Math.random() };
+      state.currentItems.push(newItem);
+      state.friteMenuPairing[burgerKey] = newItem.key;
+    }
+  }
+  // Passer au burger suivant
+  const burgers = state.currentItems.filter(i => i.type === 'burger');
+  if(state.friteStepIndex < burgers.length - 1){
+    state.friteStepIndex++;
+    render();
+  } else {
+    // Tous les burgers traités → boissons
+    state.step = "boissons";
+    render();
+  }
+  const scrollTop = () => { const c = document.getElementById("content"); if(c) c.scrollTop = 0; window.scrollTo(0,0); };
+  requestAnimationFrame(() => requestAnimationFrame(scrollTop));
+  setTimeout(scrollTop, 50);
 }
 
 function addBurgerFriesV2(id){
@@ -1198,8 +1263,35 @@ function renderBoissonStep(){
   let html = '<div class="pad">';
   html += `<div class="options-header">
     <button class="btn-back" onclick="state.step='frites';render()">← Retour</button>
-    <div class="options-title">🥤 Boissons</div>
+    <div class="options-title">🍟🥤 Frites seules & Boissons</div>
   </div>`;
+
+  // Bouton haut
+  html += `<button class="btn btn-green" style="width:100%;margin-bottom:14px" onclick="state.step='burger';openSlotModal()">✓ Envoyer en cuisine</button>`;
+
+  // Frites seules en premier
+  html += '<div class="section-title">Frites seules</div><div class="grid-2">';
+  for(const f of SOLO_FRIES){
+    const avail = optionAvailable(f);
+    html += `<button class="mini-card${avail?'':' unavailable'}" onclick="${avail?`addSoloFriesV2('${f.id}')`:''}" >
+      <div class="mini-name">${f.name}</div>
+      <div class="mini-price">${fmt(f.price)}</div>
+      ${!avail?'<div class="epuise-badge">ÉPUISÉ</div>':''}
+    </button>`;
+  }
+  html += '</div>';
+  const fritesSeul = state.currentItems.filter(i => i.type === 'fries');
+  if(fritesSeul.length > 0){
+    for(const item of fritesSeul){
+      html += `<div class="ticket-item"><div><div class="ticket-item-name">🍟 ${item.fries.name}</div></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="ticket-item-price">${fmt(item.fries.price)}</div>
+          <button class="remove-btn" onclick="removeItem(${item.key})">×</button>
+        </div></div>`;
+    }
+  }
+
+  // Boissons
   html += '<div class="section-title">Boissons</div><div class="grid-2">';
   for(const d of DRINKS){
     html += `<button class="mini-card" onclick="addDrinkV2('${d.id}')">
@@ -1210,7 +1302,6 @@ function renderBoissonStep(){
   html += '</div>';
   const drinkItems = state.currentItems.filter(i => i.type === 'drink');
   if(drinkItems.length > 0){
-    html += '<div class="section-title">Boissons ajoutées</div>';
     for(const item of drinkItems){
       html += `<div class="ticket-item"><div><div class="ticket-item-name">🥤 ${item.drink.name}</div></div>
         <div style="display:flex;align-items:center;gap:10px">
@@ -1224,7 +1315,6 @@ function renderBoissonStep(){
   // Construction des menus via pairing explicite
   const burgers    = state.currentItems.filter(i => i.type === 'burger');
   const fritesMenu = state.currentItems.filter(i => i.type === 'fries-menu');
-  const fritesSeul = state.currentItems.filter(i => i.type === 'fries');
   const boissons   = state.currentItems.filter(i => i.type === 'drink');
 
   // Reconstruire pairing si nécessaire (burgers sans frite assignée)
@@ -1238,7 +1328,13 @@ function renderBoissonStep(){
   const fritesNonPairees = fritesMenu.filter(f => !pairedFriteKeys.has(f.key));
   const hasDnd = fritesMenu.length > 0 && burgers.length > 1;
 
-  html += `<div class="ticket" style="margin-top:16px"><div class="ticket-title">🧾 RÉCAPITULATIF${hasDnd ? ' <span style="font-size:10px;color:var(--text-soft);font-weight:normal">— glisser 🍟 pour réassigner</span>' : ''}</div>`;
+  const editingLabel = state._editingOrderId
+    ? `<span style="color:var(--gold);font-size:12px;margin-left:6px">✏️ Commande #${state._editingOrderId}</span>`
+    : '';
+  html += `<div class="ticket" style="margin-top:16px"><div class="ticket-title" style="display:flex;justify-content:space-between;align-items:center">
+    <span>🧾 RÉCAPITULATIF${editingLabel}</span>
+    <button onclick="state.step='burger';render()" style="border:none;cursor:pointer;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:bold;background:#fff0d8;color:var(--gold);border:1px solid #ecc791;white-space:nowrap">+ Burger</button>
+  </div>`;
 
   // Menus
   for(const b of burgers){
@@ -1262,15 +1358,15 @@ function renderBoissonStep(){
         <div style="font-weight:bold;color:var(--gold);font-size:12px">${pairedFrite ? '🍽️ MENU' : '🍔 BURGER'}</div>
         <div class="ticket-item-price">${fmt(menuTotal)}</div>
       </div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-        <div>
-          <div class="ticket-item-name">🍔 ${b.burger.name}${b.cuisson ? ` <span style="font-size:11px">[${cuissonLabel(b.cuisson)}]</span>` : ''}</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <div class="ticket-item-name">🍔 ${b.burger.name}${b.cuisson ? ` <span style="font-size:11px">[${cuissonLabel(b.cuisson)}]</span>` : ''}</div>
+            <button onclick="editItem(${b.key})" style="border:none;cursor:pointer;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:bold;background:#fff0d8;color:var(--gold);border:1px solid #ecc791;white-space:nowrap;flex-shrink:0">✏️ Modifier</button>
+          </div>
           ${suppsDetail}${removalsDetail}
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-          <div class="ticket-item-price" style="font-size:12px;color:var(--text-soft)">${fmt(burgerPrice)}</div>
-          <button onclick="editItem(${b.key})" style="border:none;cursor:pointer;border-radius:8px;padding:4px 9px;font-size:11px;font-weight:bold;background:#fff0d8;color:var(--gold);border:1px solid #ecc791">✏️ Modifier</button>
-        </div>
+        <div class="ticket-item-price" style="font-size:12px;color:var(--text-soft);flex-shrink:0">${fmt(burgerPrice)}</div>
       </div>
       ${pairedFrite ? `
       <div class="draggable-frite" draggable="true"
@@ -1382,7 +1478,7 @@ function payOrder(id){
   const order = state.orders.find(o => o.id === id);
   if(!order) return;
   order.status = "paye";
-  if(order.loyalty) state.loyaltyCount++;
+  state.loyaltyCount += (order.loyaltyCount || (order.loyalty ? 1 : 0));
   state.dailyRevenue += order.total;
   saveState();
   syncOrderToSheets(order);
@@ -1401,7 +1497,7 @@ function cancelOrder(id){
   }
   // If was paid, remove from revenue; undo loyalty count
   if(order.status === "paye") state.dailyRevenue = Math.max(0, state.dailyRevenue - order.total);
-  if(order.loyalty) state.loyaltyCount = Math.max(0, state.loyaltyCount - 1);
+  state.loyaltyCount = Math.max(0, state.loyaltyCount - (order.loyaltyCount || (order.loyalty ? 1 : 0)));
   order.status = "annule";
   saveState();
   syncOrderToSheets(order);
@@ -1430,21 +1526,24 @@ function editOrder(id){
       if(state.ingredients[k]) state.ingredients[k].qty += qty;
     }
   }
-  // If was paid, reverse revenue; undo loyalty count
   if(order.status === "paye") state.dailyRevenue = Math.max(0, state.dailyRevenue - order.total);
-  if(order.loyalty) state.loyaltyCount = Math.max(0, state.loyaltyCount - 1);
-  // Load back into ticket
+  state.loyaltyCount = Math.max(0, state.loyaltyCount - (order.loyaltyCount || (order.loyalty ? 1 : 0)));
+  // Restore items with stable keys
   state.currentItems = order.items.map(i => ({...i, key: i.key || (Date.now() + Math.random())}));
+  // Restore frite pairing
+  state.friteMenuPairing = order.friteMenuPairing ? {...order.friteMenuPairing} : {};
   state._editingOrderId = order.id;
   state.loyaltyActive = order.loyalty || false;
   state.orders = state.orders.filter(o => o.id !== id);
-  state.step = "burger";
+  // Aller directement au récap (étape boissons)
+  state.step = "boissons";
   state.pendingBurger = null;
   state.pendingSupps = [];
   state.pendingFrite = null;
   state.pendingDrink = null;
   state.pendingCuisson = null;
   state.editingItemKey = null;
+  state.friteStepIndex = 0;
   saveState();
   switchTab("caisse");
 }
@@ -1729,13 +1828,16 @@ function openAgendaModal(){
           </div>
         </div>`;
       for(const order of slotOrders){
+        const pairing = order.friteMenuPairing || {};
         const burgerItems = order.items.filter(i => i.type === "burger" || i.type === "steakfrites");
-        const friteItems  = order.items.filter(i => i.type === "fries" || (i.type === "burger" && i.frite) || i.type === "steakfrites");
         const burgerLines = burgerItems.map(i => {
           if(i.type === "steakfrites") return `<div style="font-size:12px;color:var(--text)">🥩 Steak + Frites</div>`;
           const cuisson = i.cuisson ? ` <span style="color:${cuissonColor(i.cuisson)}">[${cuissonLabel(i.cuisson)}]</span>` : '';
           const removals = (i.removals||[]).length ? ` <span style="color:var(--red)">✕${(i.removals).map(r=>r.split(' ')[0]).join(',')}</span>` : '';
-          return `<div style="font-size:12px;color:var(--text)">🍔 ${i.burger.name}${cuisson}${removals}</div>`;
+          const pairedFriteKey = pairing[i.key];
+          const pairedFrite = pairedFriteKey ? order.items.find(x => x.key === pairedFriteKey) : null;
+          const friteLabel = pairedFrite ? ` <span style="color:var(--gold);font-size:11px">🍟${pairedFrite.fries.name}</span>` : '';
+          return `<div style="font-size:12px;color:var(--text)">🍔 ${i.burger.name}${cuisson}${removals}${friteLabel}</div>`;
         }).join('');
         html += `<div class="agenda-order-line ${order.status}" style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-left:none;border-bottom:1px solid var(--line)">
           <button onclick="goToOrder(${order.id})" style="flex-shrink:0;background:${order.status==='paye'?'#1a9058':'var(--gold)'};color:white;border:none;border-radius:10px;padding:7px 14px;font-size:15px;font-weight:bold;cursor:pointer;min-width:52px;text-align:center;font-family:Georgia,serif;letter-spacing:.5px">#${order.id}</button>
@@ -1928,9 +2030,89 @@ function render(){
     content.innerHTML = renderEnCours();
   }else if(state.tab === "historique"){
     content.innerHTML = renderHistorique();
+  }else if(state.tab === "vip"){
+    content.innerHTML = renderVIP();
   }else{
     content.innerHTML = renderStocks();
   }
+}
+
+// ---- VIP PRESETS ----
+const VIP_ORDERS = [
+  {
+    id: "leG",
+    name: "Le G",
+    emoji: "👑",
+    description: "2× Montagnard double steak · 2× Frites cheddar bacon · 1× Poulet · 2× Soft",
+    build: () => {
+      const items = [];
+      const montagnard = BURGERS.find(b => b.id === "montagnard");
+      const poulet     = BURGERS.find(b => b.id === "poulet");
+      const doubleSupp = SUPPLEMENTS.find(s => s.id === "double");
+      const bfChedBac  = BURGER_FRIES.find(f => f.id === "bfChedBac");
+      const softDrink  = DRINKS.find(d => d.id === "soft");
+
+      const key1 = Date.now();
+      const key2 = key1 + 1;
+      const key3 = key1 + 2;
+      const keyF1 = key1 + 10;
+      const keyF2 = key1 + 11;
+      const keyD1 = key1 + 20;
+      const keyD2 = key1 + 21;
+
+      // 2 Montagnard double steak
+      items.push({ type:"burger", key:key1, burger:montagnard, supplements:[doubleSupp], removals:[], cuisson:null });
+      items.push({ type:"burger", key:key2, burger:montagnard, supplements:[doubleSupp], removals:[], cuisson:null });
+      // 1 Poulet
+      items.push({ type:"burger", key:key3, burger:poulet, supplements:[], removals:[], cuisson:null });
+      // 2 frites cheddar bacon (menu)
+      items.push({ type:"fries-menu", key:keyF1, fries:bfChedBac });
+      items.push({ type:"fries-menu", key:keyF2, fries:bfChedBac });
+      // 2 Soft
+      items.push({ type:"drink", key:keyD1, drink:softDrink });
+      items.push({ type:"drink", key:keyD2, drink:softDrink });
+
+      const pairing = { [key1]: keyF1, [key2]: keyF2, [key3]: null };
+      return { items, pairing };
+    }
+  }
+];
+
+function loadVipOrder(vipId){
+  if(state.currentItems.length > 0){
+    if(!confirm("Un ticket est déjà en cours. Remplacer par la commande VIP ?")) return;
+  }
+  const vip = VIP_ORDERS.find(v => v.id === vipId);
+  if(!vip) return;
+  const { items, pairing } = vip.build();
+  state.currentItems = items;
+  state.friteMenuPairing = pairing;
+  state.friteStepIndex = 0;
+  state.step = "boissons";
+  switchTab("caisse");
+  // Ouvrir modal horaire
+  requestAnimationFrame(() => openSlotModal());
+}
+
+function renderVIP(){
+  let html = '<div class="pad">';
+  html += '<div class="section-title" style="margin-bottom:16px">⭐ Commandes VIP</div>';
+  html += '<div style="font-size:12px;color:var(--text-soft);margin-bottom:18px">Appuyer sur une commande pour la charger directement sur l\'écran des horaires.</div>';
+
+  for(const vip of VIP_ORDERS){
+    const rawTotal = vip.build().items.reduce((s,i) => s + itemTotal(i), 0);
+    html += `<button onclick="loadVipOrder('${vip.id}')" style="width:100%;background:#fff8ef;border:1.5px solid #ecc791;border-radius:16px;padding:18px 20px;margin-bottom:14px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:16px">
+      <div style="font-size:36px;line-height:1">${vip.emoji}</div>
+      <div style="flex:1">
+        <div style="font-size:17px;font-weight:bold;color:var(--gold);font-family:Georgia,serif;margin-bottom:4px">${vip.name}</div>
+        <div style="font-size:12px;color:var(--text-soft);line-height:1.5">${vip.description}</div>
+      </div>
+      <div style="font-size:15px;font-weight:bold;color:var(--gold);font-family:'Courier New',monospace;white-space:nowrap">${fmt(rawTotal)}</div>
+    </button>`;
+  }
+
+  html += '</div>';
+  return html;
 }
 
 function renderCaisse(){
@@ -2016,17 +2198,17 @@ function renderCaisse(){
       } else {
         const cuissonInfo = item.cuisson ? `${cuissonDot(item.cuisson)}<span>${cuissonLabel(item.cuisson)}</span>` : '';
         const nameColor = item.cuisson ? cuissonColor(item.cuisson) : 'var(--text)';
-        html += `<div class="ticket-item">
-          <div style="flex:1">
-            <div class="ticket-item-name" style="color:${nameColor}">${item.burger.name}</div>
+        html += `<div class="ticket-item" style="align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+              <div class="ticket-item-name" style="color:${nameColor};flex:1;min-width:0">${item.burger.name}</div>
+              <button class="ticket-item-edit" onclick="editItem(${item.key})" style="flex-shrink:0">✏️ Modifier</button>
+            </div>
             ${item.cuisson ? `<div class="ticket-item-sub">${cuissonInfo}</div>` : ''}
             ${(item.supplements || []).map(s => `<div class="ticket-item-sub">+ ${s.name}</div>`).join('')}
             ${(item.removals || []).map(r => `<div class="ticket-item-sub" style="color:var(--red)">✕ Sans ${r}</div>`).join('')}
-            ${item.frite ? `<div class="ticket-item-sub">+ Frites ${item.frite.name}</div>` : ''}
-            ${item.drink ? `<div class="ticket-item-sub">+ Boisson ${item.drink.name}</div>` : ''}
-            <button class="ticket-item-edit" onclick="editItem(${item.key})">✏️ Modifier</button>
           </div>
-          <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:flex;align-items:flex-start;gap:10px;padding-top:2px">
             <div class="ticket-item-price">${fmt(itemTotal(item))}</div>
             <button class="remove-btn" onclick="removeItem(${item.key})">×</button>
           </div>
@@ -2060,6 +2242,9 @@ function renderOptions(){
     <button class="btn-back" onclick="goBackToBurger()">← Retour</button>
     <div class="options-title">${b.name} — ${fmt(b.price)}</div>
   </div>`;
+
+  // Bouton Ajouter au ticket en haut
+  html += `<button class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="addBurgerItem()">${isEditing ? '✓ Mettre à jour' : '+ Ajouter au ticket'}</button>`;
 
   // Cuisson
   html += '<div class="section-title">Cuisson</div><div class="grid-4">';
@@ -2133,29 +2318,34 @@ function renderOptions(){
 
 function renderOrderItems(order){
   let html = '';
+  const pairing = order.friteMenuPairing || {};
+  const pairedFriteKeys = new Set(Object.values(pairing).filter(Boolean));
+
   for(const item of order.items){
+    if(item.type === "fries-menu" && pairedFriteKeys.has(item.key)) continue; // affiché avec son burger
     if(item.type === "fries" || item.type === "fries-menu"){
-      html += `<div class="order-item"><div><div class="order-item-name">${item.fries.name}</div><div class="order-item-sub">Portion seule</div></div></div>`;
+      html += `<div class="order-item"><div><div class="order-item-name">🍟 ${item.fries.name}</div><div class="order-item-sub">Portion seule</div></div></div>`;
     } else if(item.type === "drink"){
       html += `<div class="order-item"><div><div class="order-item-name">${item.drink.name}</div><div class="order-item-sub">Boisson</div></div></div>`;
     } else if(item.type === "steakfrites"){
       html += `<div class="order-item"><div><div class="order-item-name">🥩 Steak + Frites</div><div class="order-item-sub">Formule</div></div></div>`;
-    } else {
+    } else if(item.type === "burger"){
       const cuisson = item.cuisson ? `<div class="order-item-sub">${cuissonDot(item.cuisson)} Cuisson : ${cuissonLabel(item.cuisson)}</div>` : '';
       const nameColor = item.cuisson ? cuissonColor(item.cuisson) : 'var(--text)';
+      const pairedFriteKey = pairing[item.key];
+      const pairedFrite = pairedFriteKey ? order.items.find(i => i.key === pairedFriteKey) : null;
       html += `<div class="order-item">
         <div>
           <div class="order-item-name" style="color:${nameColor}">${item.burger.name}</div>
           ${cuisson}
           ${(item.supplements || []).map(s => `<div class="order-item-sub">+ ${s.name}</div>`).join('')}
           ${(item.removals || []).map(r => `<div class="order-item-sub" style="color:var(--red);font-weight:bold">✕ SANS ${r.toUpperCase()}</div>`).join('')}
-          ${item.frite ? `<div class="order-item-sub">+ Frites ${item.frite.name}</div>` : ''}
-          ${item.drink ? `<div class="order-item-sub">+ Boisson ${item.drink.name}</div>` : ''}
+          ${pairedFrite ? `<div class="order-item-sub" style="color:var(--gold)">🍟 ${pairedFrite.fries.name}</div>` : ''}
         </div>
       </div>`;
     }
   }
-  if(order.loyalty) html += `<div style="font-size:11px;color:var(--red);padding:4px 0;border-top:1px solid var(--line);margin-top:4px">🎫 Carte fidélité — 10,00 € déduits</div>`;
+  if(order.loyalty) html += `<div style="font-size:11px;color:var(--red);padding:4px 0;border-top:1px solid var(--line);margin-top:4px">🎫 Fidélité ×${order.loyaltyCount||1} — −${fmt((order.loyaltyCount||1)*10)} déduits</div>`;
   return html;
 }
 
@@ -2181,7 +2371,7 @@ function renderEnCours(){
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <div class="order-num">#${order.id}</div>
           ${order.slot ? `<span style="font-size:12px;background:#fff0d8;color:var(--gold);border:1px solid #ecc791;border-radius:8px;padding:3px 10px;font-weight:bold">🕐 ${order.slot}</span>` : ''}
-          ${order.loyalty ? `<span style="font-size:12px;background:#fce8e8;color:var(--red);border:1px solid #e8a0a0;border-radius:8px;padding:3px 10px;font-weight:bold">🎫 −10,00 €</span>` : ''}
+          ${order.loyalty ? `<span onclick="removeOrderLoyalty(${order.id})" style="cursor:pointer;font-size:12px;background:#fce8e8;color:var(--red);border:1px solid #e8a0a0;border-radius:8px;padding:3px 10px;font-weight:bold" title="Cliquer pour retirer une carte">🎫 ×${order.loyaltyCount||1} −${fmt((order.loyaltyCount||1)*10)} ✕</span>` : ''}
         </div>
         <div class="order-total">${fmt(order.total)}</div>
       </div>
@@ -2193,7 +2383,7 @@ function renderEnCours(){
       <div class="order-actions">
         <button class="btn btn-cancel" onclick="cancelOrder(${order.id})">✕ Annuler</button>
         <button class="btn" style="flex:1;background:#fff0d8;color:var(--gold);border:1px solid #ecc791" onclick="editOrder(${order.id})">✏️ Modifier</button>
-        <button class="btn" style="padding:9px 16px;font-size:12px;white-space:nowrap;${order.loyalty ? 'background:linear-gradient(180deg,#d94f4f,#b03030);color:white' : 'background:#fff0d8;color:var(--gold);border:1px solid #ecc791'}" onclick="toggleOrderLoyalty(${order.id})">🎫 Fidélité</button>
+        <button class="btn" style="background:#fff0d8;color:var(--gold);border:1px solid #ecc791;text-align:center" onclick="addOrderLoyalty(${order.id})">🎫 Fidélité</button>
         <button class="btn btn-pay" onclick="payOrder(${order.id})">💳 ${fmt(order.total)}</button>
       </div></div>`;
   }
