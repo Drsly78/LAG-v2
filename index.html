@@ -710,46 +710,74 @@ const STORAGE_KEYS = {
 function getSheetsUrl(){ return localStorage.getItem(STORAGE_KEYS.sheetsUrl) || ''; }
 function setSheetsUrl(url){ localStorage.setItem(STORAGE_KEYS.sheetsUrl, url.trim()); }
 
-function syncOrderToSheets(order){
-  const url = getSheetsUrl();
-  if(!url) return;
-  const date = new Date();
-  const dateStr = date.toLocaleDateString('fr-FR');
-  const timeStr = date.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
-  const items = order.items.map(i => {
+
+function buildOrderItemsLabel(order){
+  return (order.items || []).map(i => {
     if(i.type === 'steakfrites') return 'Steak+Frites';
-    if(i.type === 'fries') return i.fries.name;
+    if(i.type === 'fries' || i.type === 'fries-menu') return i.fries.name;
     if(i.type === 'drink') return i.drink.name;
     const extras = [
       i.cuisson ? cuissonLabel(i.cuisson) : null,
-      ...(i.supplements||[]).map(s => '+'+s.name),
-      i.frite ? '+Frites '+i.frite.name : null,
-      i.drink ? '+'+i.drink.name : null,
-      ...(i.removals||[]).map(r => '-'+r)
+      ...(i.supplements||[]).map(s => '+' + s.name),
+      i.frite ? '+Frites ' + i.frite.name : null,
+      i.drink ? '+' + i.drink.name : null,
+      ...(i.removals||[]).map(r => '-' + r)
     ].filter(Boolean);
-    return i.burger.name + (extras.length ? ' ('+extras.join(', ')+')' : '');
+    return i.burger.name + (extras.length ? ' (' + extras.join(', ') + ')' : '');
   }).join(' | ');
-  const ttc = order.total;
+}
+
+function syncOrderToSheets(order){
+  const url = getSheetsUrl();
+  if(!url || !order || !order.id) return Promise.resolve(false);
+
+  order._sheetSyncPending = order._sheetSyncPending || false;
+  order._sheetSyncedStatuses = order._sheetSyncedStatuses || {};
+
+  if(order._sheetSyncPending) return Promise.resolve(false);
+  if(order._sheetSyncedStatuses[order.status]) return Promise.resolve(true);
+
+  const now = new Date();
+  const dateStr = order.date || now.toLocaleDateString('fr-FR');
+  const timeStr = order.heure || now.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+  const ttc = Number(order.total || 0);
   const ht  = ttc / 1.10;
   const tva = ttc - ht;
+
   const payload = {
     id: order.id,
     date: dateStr,
     heure: timeStr,
     creneau: order.slot || '',
-    statut: order.status === 'paye' ? 'Reglée' : order.status === 'annule' ? 'Annulée' : 'En cours',
-    articles: items,
+    statut: order.status === 'paye' ? 'Reglee' : order.status === 'annule' ? 'Annulee' : 'En cours',
+    articles: buildOrderItemsLabel(order),
     total_ttc: fmtNum(ttc),
     total_ht: fmtNum(ht),
     tva: fmtNum(tva),
     fidelite: order.loyalty ? 'Oui' : 'Non'
   };
-  fetch(url, {
+
+  order._sheetSyncPending = true;
+  saveState();
+
+  return fetch(url, {
     method:'POST',
     mode:'no-cors',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify(payload)
-  }).catch(() => {});
+  })
+  .then(() => {
+    order._sheetSyncedStatuses[order.status] = true;
+    order._sheetSyncPending = false;
+    saveState();
+    return true;
+  })
+  .catch((err) => {
+    console.error('Erreur Google Sheets :', err);
+    order._sheetSyncPending = false;
+    saveState();
+    return false;
+  });
 }
 
 function saveState(){
@@ -1474,7 +1502,6 @@ function playCashSound(){
   } catch(e) {}
 }
 
-
 function payOrder(id){
   const order = state.orders.find(o => o.id === id);
 
@@ -1482,6 +1509,8 @@ function payOrder(id){
   if(!order || order.status !== "encours") return;
 
   order.status = "paye";
+  order.date = order.date || new Date().toLocaleDateString('fr-FR');
+  order.heure = order.heure || new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
 
   state.loyaltyCount += (order.loyaltyCount || (order.loyalty ? 1 : 0));
   state.dailyRevenue += order.total;
@@ -1493,30 +1522,39 @@ function payOrder(id){
   // rafraîchir immédiatement l'affichage
   state.tab = "encours";
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-  const encBtn = document.getElementById("tab-encours");
-  if(encBtn) encBtn.classList.add("active");
+  const encoursBtn = document.getElementById("tab-encours");
+  if(encoursBtn) encoursBtn.classList.add("active");
 
   render();
 }
-
 function cancelOrder(id){
   const order = state.orders.find(o => o.id === id);
-  if(!order) return;
+  if(!order || order.status === "annule") return;
+
   for(const item of order.items){
     const needed = countNeeded(getItemIngredients(item));
     for(const [k, qty] of Object.entries(needed)){
       if(state.ingredients[k]) state.ingredients[k].qty += qty;
     }
   }
-  if(order.status === "paye") state.dailyRevenue = Math.max(0, state.dailyRevenue - order.total);
+
+  if(order.status === "paye") {
+    state.dailyRevenue = Math.max(0, state.dailyRevenue - order.total);
+  }
+
   state.loyaltyCount = Math.max(0, state.loyaltyCount - (order.loyaltyCount || (order.loyalty ? 1 : 0)));
   order.status = "annule";
+  order.date = order.date || new Date().toLocaleDateString('fr-FR');
+  order.heure = order.heure || new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+
   saveState();
   syncOrderToSheets(order);
-  // Forcer le rendu immédiat sans changer d'onglet
+
   state.tab = "encours";
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-  document.getElementById("tab-encours").classList.add("active");
+  const encoursBtn = document.getElementById("tab-encours");
+  if(encoursBtn) encoursBtn.classList.add("active");
+
   render();
 }
 function deleteOrder(id){
@@ -1887,24 +1925,12 @@ function exportExcel(){
   const url = getSheetsUrl();
 
   if(url){
-    const orders = state.orders.filter(o => o.status !== 'annule');
+    const orders = state.orders.filter(o => o.status === 'paye');
     if(orders.length === 0){ alert("Aucune commande à exporter."); return; }
 
     // Onglet 1 : détail des commandes
     const rows = orders.map(order => {
-      const items = order.items.map(i => {
-        if(i.type === 'steakfrites') return 'Steak+Frites';
-        if(i.type === 'fries') return i.fries.name;
-        if(i.type === 'drink') return i.drink.name;
-        const extras = [
-          i.cuisson ? cuissonLabel(i.cuisson) : null,
-          ...(i.supplements||[]).map(s => '+'+s.name),
-          i.frite ? '+Frites '+i.frite.name : null,
-          i.drink ? '+'+i.drink.name : null,
-          ...(i.removals||[]).map(r => '-'+r)
-        ].filter(Boolean);
-        return i.burger.name + (extras.length ? ' ('+extras.join(', ')+')' : '');
-      }).join(' | ');
+      const items = buildOrderItemsLabel(order);
       const ttc = order.total;
       return {
         id: order.id,
@@ -2435,7 +2461,7 @@ function renderEnCours(){
         <button class="btn btn-cancel" onclick="cancelOrder(${order.id})">✕ Annuler</button>
         <button class="btn" style="flex:1;background:#fff0d8;color:var(--gold);border:1px solid #ecc791" onclick="editOrder(${order.id})">✏️ Modifier</button>
         <button class="btn" style="background:#fff0d8;color:var(--gold);border:1px solid #ecc791;text-align:center" onclick="addOrderLoyalty(${order.id})">🎫 Fidélité</button>
-        <button class="btn btn-pay" onclick="this.disabled=true; payOrder(${order.id})">💳 ${fmt(order.total)}</button>
+        <button class="btn btn-pay" onclick="if(this.disabled) return; this.disabled = true; payOrder(${order.id})">💳 ${fmt(order.total)}</button>
       </div></div>`;
   }
 
